@@ -32,6 +32,19 @@ AFPSCharacter::AFPSCharacter()
 	GunMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FP_Gun"));
 	GunMeshComponent->CastShadow = false;
 	GunMeshComponent->SetupAttachment(Mesh1PComponent, "GripPoint");
+
+	//Ä¬ÈÏÉ¢µ¯ÉèÖÃ
+	bUseSpread = false;
+	NumPellets = 6;
+	SpreadAngleDegrees = 10.0f;
+
+	//Ä¬ÈÏµ¯Ò©ÉèÖÃ
+	MaxAmmoInClip = 30;
+	CurrentAmmoInClip = MaxAmmoInClip;
+	MaxReserveAmmo = 60;
+	ReserveAmmo = MaxReserveAmmo;
+	ReloadTimeSeconds = 2.0f;
+	bIsReloading = false;
 }
 
 
@@ -45,6 +58,12 @@ void AFPSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 	// Jump exists in the base class, we dont need our own function
 	EnhancedInputComponent->BindAction(Input_Jump, ETriggerEvent::Triggered, this, &ACharacter::Jump);
 	EnhancedInputComponent->BindAction(Input_Fire, ETriggerEvent::Triggered, this, &AFPSCharacter::Fire);
+
+	//°ó¶¨»»µ¯
+	if (Input_Reload)
+	{
+		EnhancedInputComponent->BindAction(Input_Reload, ETriggerEvent::Triggered, this, &AFPSCharacter::StartReload);
+	}
 
 	const APlayerController* PC = GetController<APlayerController>();
 	const ULocalPlayer* LP = PC->GetLocalPlayer();
@@ -87,6 +106,15 @@ void AFPSCharacter::OnJumped_Implementation()
 
 void AFPSCharacter::Fire()
 {
+	if (bIsReloading) return;  //»»µ¯Ê±²»ÄÜ¿ª»ð
+
+	if (CurrentAmmoInClip <= 0) {
+
+		if (ReserveAmmo > 0) StartReload();
+
+		return;
+	}
+	
 	// try and fire a projectile
 	if (ProjectileClass)
 	{
@@ -100,8 +128,31 @@ void AFPSCharacter::Fire()
 		ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
 		ActorSpawnParams.Instigator = this;
 
-		// spawn the projectile at the muzzle
-		GetWorld()->SpawnActor<AFPSProjectile>(ProjectileClass, MuzzleLocation, MuzzleRotation, ActorSpawnParams);
+		if (bUseSpread && NumPellets > 1) {
+			const float HalfAngle = SpreadAngleDegrees * 0.5f;
+			for (int32 i = 0; i < NumPellets; i++) {
+				float YawOff = FMath::RandRange(-HalfAngle, HalfAngle);
+				float PitchOff = FMath::RandRange(-HalfAngle, HalfAngle);
+				FRotator SpreadRot = MuzzleRotation + FRotator(PitchOff, YawOff, 0.0f);
+
+				/*×Óµ¯Î»ÖÃËæ»ú*/
+				FVector ForwardDir = MuzzleRotation.Vector();
+				FVector RightDir = FRotationMatrix(MuzzleRotation).GetScaledAxis(EAxis::Y);
+				FVector UpDir = FRotationMatrix(MuzzleRotation).GetScaledAxis(EAxis::Z);
+				FVector OffsetLocation = MuzzleLocation
+					+ RightDir * FMath::RandRange(-2.0f, 2.0f)
+					+ UpDir * FMath::RandRange(-2.0f, 2.0f);
+
+				AFPSProjectile* Proj = GetWorld()->SpawnActor<AFPSProjectile>(ProjectileClass, OffsetLocation, SpreadRot, ActorSpawnParams);
+				UE_LOG(LogTemp, Warning, TEXT("Spawned pellet %d, ptr=%s"), i, (Proj ? TEXT("Valid") : TEXT("NULL")));
+			}
+		}
+		else {
+			// spawn the projectile at the muzzle
+			GetWorld()->SpawnActor<AFPSProjectile>(ProjectileClass, MuzzleLocation, MuzzleRotation, ActorSpawnParams);
+		}
+		
+		--CurrentAmmoInClip;
 	}
 
 	UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation());
@@ -136,4 +187,35 @@ void AFPSCharacter::LookInput(const FInputActionValue& InputValue)
 	
 	AddControllerYawInput(LookValue.X);
 	AddControllerPitchInput(LookValue.Y);
+}
+
+void AFPSCharacter::StartReload() {
+	if (bIsReloading || CurrentAmmoInClip >= MaxAmmoInClip || ReserveAmmo <= 0) return;
+
+	bIsReloading = true;
+
+	//²¥·Å»»µ¯ÒôÆµ
+	if (ReloadSound) UGameplayStatics::PlaySoundAtLocation(this, ReloadSound, GetActorLocation());
+
+	UAnimInstance* AnimInstance = Mesh1PComponent->GetAnimInstance();
+	if (AnimInstance && ReloadAnimation)
+	{
+		AnimInstance->PlaySlotAnimationAsDynamicMontage(ReloadAnimation, "Arms", 0.0f);
+	}
+
+	GetWorldTimerManager().SetTimer(ReloadTimerHandle, this, &AFPSCharacter::FinishReload, ReloadTimeSeconds);
+}
+
+void AFPSCharacter::FinishReload()
+{
+	if (!bIsReloading)
+		return;
+
+	int32 Need = MaxAmmoInClip - CurrentAmmoInClip;
+	int32 ToReload = FMath::Min(Need, ReserveAmmo);
+
+	CurrentAmmoInClip += ToReload;
+	ReserveAmmo -= ToReload;
+
+	bIsReloading = false;
 }

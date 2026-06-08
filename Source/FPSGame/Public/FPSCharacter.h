@@ -45,6 +45,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category= "Input")
 	UInputAction* Input_Fire;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	UInputAction* Input_Reload;
+
 	/** Pawn mesh: 1st person view  */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Mesh")
 	USkeletalMeshComponent* Mesh1PComponent;
@@ -70,13 +73,40 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category="Projectile")
 	TSubclassOf<AFPSProjectile> ProjectileClass;
 
+	/*是否启用散射设置*/
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	bool bUseSpread;
+	/*散射子弹数量*/
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	int32 NumPellets;
+	/*散射角度*/
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	float SpreadAngleDegrees;
+
+	/*子弹系统*/
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	int32 MaxAmmoInClip;
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	int32 CurrentAmmoInClip;
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	int32 MaxReserveAmmo;
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	int32 ReserveAmmo;
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	float ReloadTimeSeconds;
+
 	/** Sound to play each time we fire */
 	UPROPERTY(EditDefaultsOnly, Category="Gameplay")
 	USoundBase* FireSound;
+	UPROPERTY(EditDefaultsOnly, Category = "Gameplay")
+	USoundBase* ReloadSound;
 
 	/** AnimMontage to play each time we fire */
 	UPROPERTY(EditDefaultsOnly, Category = "Gameplay")
 	UAnimSequence* FireAnimation;
+	/*换弹动作*/
+	UPROPERTY(EditDefaultsOnly, Category = "Gameplay")
+	UAnimSequence* ReloadAnimation;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement")
 	UParticleSystem* MuzzleFlash;
@@ -90,9 +120,14 @@ protected:
 	/** Fires a projectile. */
 	void Fire();
 
-	void MoveInput(const FInputActionValue& InputValue);
+	void StartReload(); //开始换弹
+	void FinishReload(); //结束换弹
 
+	void MoveInput(const FInputActionValue& InputValue);
 	void LookInput(const FInputActionValue& InputValue);
+
+	FTimerHandle ReloadTimerHandle;
+	bool bIsReloading;
 	
 	virtual void SetupPlayerInputComponent(UInputComponent* InputComponent) override;
 
@@ -102,6 +137,13 @@ public:
 
 	/** Returns FirstPersonCameraComponent subobject **/
 	UCameraComponent* GetFirstPersonCameraComponent() const { return CameraComponent; }
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	int32 GetCurrentAmmo() const { return CurrentAmmoInClip; }
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	int32 GetReserveAmmo() const { return ReserveAmmo; }
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	bool IsReloading() const { return bIsReloading; }
 
 };
 
